@@ -1,0 +1,17 @@
+
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Archivos compilados
+dist/
+**/dist/
+
+# Variables de entorno
+.env
+.env.*
+!.env.example
+
+# Archivos temporales
+*.log
+.DS_Store
