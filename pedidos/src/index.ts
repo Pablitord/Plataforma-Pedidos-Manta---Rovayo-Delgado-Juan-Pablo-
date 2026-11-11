@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto"; //Generar Valores Aleatorios
 import {contarPrimos} from "./calculo"; //Importar la función contarPrimos desde calculo.ts
 import {Worker} from "node:worker_threads"; //Importar la clase Worker para crear hilos de trabajo
 import path from "node:path"; //Importar el módulo path para manejar rutas de archivos
+import { medirLatencia, resumenMetricas } from "./metricas";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const INVENTARIO_URL = process.env.INVENTARIO_URL ?? "http://localhost:3001";
@@ -20,6 +21,7 @@ const pedidos : Pedido[] = [];
 
 const app = express();
 app.use(express.json());
+app.use(medirLatencia);
 
 //Salud Server
 app.get("/health", (_req: Request, res: Response) =>{
@@ -172,6 +174,10 @@ app.get("/reporte/worker", async (req: Request, res: Response) => {
     res.json({modo: "worker", n, primos, duracionMs})
 });
 
+// Resumen de métricas 
+app.get("/metricas", (_req: Request, res: Response) => {
+    res.json(resumenMetricas());
+});
 
 //Puerto en el que escucha
 app.listen(PORT, () => {
