@@ -1,9 +1,13 @@
 import express, { Request, Response } from 'express';
 import {randomUUID} from "node:crypto"; //Generar Valores Aleatorios
+import {contarPrimos} from "./calculo"; //Importar la función contarPrimos desde calculo.ts
+import {Worker} from "node:worker_threads"; //Importar la clase Worker para crear hilos de trabajo
+import path from "node:path"; //Importar el módulo path para manejar rutas de archivos
 
 const PORT = Number(process.env.PORT ?? 3000);
 const INVENTARIO_URL = process.env.INVENTARIO_URL ?? "http://localhost:3001";
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 2000);
+const REPORTE_N = Number(process.env.REPORTE_N ?? 8_000_000); //Número de primos a contar para el reporte
 
 interface Pedido{
     id: string;
@@ -132,6 +136,40 @@ app.post("/pedidos", async (req: Request, res: Response) =>{
     res.status(503).json({error: "Inventario no disponible", motivo, duracionMs});
     //res.status(500).json({error: "Error al consultar el inventario"});
   }
+});
+
+
+//Función Leer Primos
+function leerN(req: Request): number {
+    const n = Number(req.query.n ?? REPORTE_N);
+    return Number.isInteger(n) && n> 0 && n <= 50_000_000 ? n : REPORTE_N;
+};
+
+app.get("/reporte/bloqueante", (req: Request, res: Response) => {
+    const n = leerN(req);
+    const inicio = performance.now();
+    const primos = contarPrimos(n);
+    const duracionMs = Math.round(performance.now() - inicio);
+    res.json({modo: "bloqueando", n, primos, duracionMs})
+});
+
+ // Con el hilo del worker
+function contarPrimosenWorker(n: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const archivo = path.join(__dirname, "worker-reporte.js");
+        const w = new Worker(archivo, { workerData: { n } });
+
+        w.once("message", (primos: number) => resolve(primos));
+        w.once("error", reject);
+    });
+}
+
+app.get("/reporte/worker", async (req: Request, res: Response) => {
+    const n = leerN(req);
+    const inicio = performance.now();
+    const primos = await contarPrimosenWorker(n);
+    const duracionMs = Math.round(performance.now() - inicio);
+    res.json({modo: "worker", n, primos, duracionMs})
 });
 
 
