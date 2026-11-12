@@ -13,6 +13,8 @@ services:
     build: ./pedidos
     environment:
       - INVENTARIO_URL=http://inventario:3001
+      - MAX_TRABAJADORES=2
+      - MAX_COLA=4
     ports:
       - "3000:3000"
     healthcheck:

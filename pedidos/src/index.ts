@@ -4,6 +4,8 @@ import {contarPrimos} from "./calculo"; //Importar la función contarPrimos desd
 import {Worker} from "node:worker_threads"; //Importar la clase Worker para crear hilos de trabajo
 import path from "node:path"; //Importar el módulo path para manejar rutas de archivos
 import { medirLatencia, resumenMetricas } from "./metricas";
+import { contarPrimosEnPool, estadoPool } from "./pool";
+
 
 const PORT = Number(process.env.PORT ?? 3000);
 const INVENTARIO_URL = process.env.INVENTARIO_URL ?? "http://localhost:3001";
@@ -174,9 +176,36 @@ app.get("/reporte/worker", async (req: Request, res: Response) => {
     res.json({modo: "worker", n, primos, duracionMs})
 });
 
-// Resumen de métricas 
-app.get("/metricas", (_req: Request, res: Response) => {
-    res.json(resumenMetricas());
+
+
+// Reporte con Pool de trabajadores limitado
+app.get("/reporte/pool", async ( req: Request, res: Response) => {
+    const n = leerN(req);
+    const inicio = performance.now();
+    try {
+        const primos = await contarPrimosEnPool(n);
+        const duracionMs = Math.round(
+            performance.now() - inicio
+        );
+        res.json({modo: "pool", n, primos, duracionMs
+        });
+    } catch (error) {
+        const e = error as Error;
+        if (e.name === "PoolLleno") {
+            res.setHeader("Retry-After", "1");
+            res.status(503).json({ error: e.message, pool: estadoPool()
+            });
+            return;
+        }
+        console.error("Error en /reporte/pool:",e
+        );
+        res.status(500).json({error: "No se pudo ejecutar el reporte"});
+    }
+});
+
+// Resumen de métricas y estado del pool
+app.get("/metricas", ( _req: Request, res: Response ) => {
+    res.json({...resumenMetricas(), pool: estadoPool() });
 });
 
 //Puerto en el que escucha
