@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { iniciarGrpc } from './grpc'; // Se importa el servidor GRPC desde el archivo grpc.ts
 
 const PORT = Number(process.env.PORT ?? 3001);
 const RETARDO_MS = Number(process.env.RETARDO_MS ?? 1000);
@@ -6,7 +7,8 @@ const stock = new Map<string, number>([
   ['Laptop-14', 10],
   ['MOUSE-USB', 40],
   ['Teclado-16', 12],
-  ['Monitor-17', 5]
+  ['Monitor-17', 5],
+  ["ROVAYO-USB", 25]
 ]);
 
 const esperar = (ms: number) => new Promise <void>((r) => setTimeout(r, ms));
@@ -102,3 +104,5 @@ app.post("/stock/:sku/reservar", async (
 app.listen(PORT, () => {
   console.log(`Servicio de inventario escuchando en el puerto ${PORT}` + `retraso: ${RETARDO_MS} ms`);
 });
+
+iniciarGrpc(stock, RETARDO_MS);

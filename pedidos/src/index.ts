@@ -5,6 +5,7 @@ import {Worker} from "node:worker_threads"; //Importar la clase Worker para crea
 import path from "node:path"; //Importar el módulo path para manejar rutas de archivos
 import { medirLatencia, resumenMetricas } from "./metricas";
 import { contarPrimosEnPool, estadoPool } from "./pool";
+import {llamar, aHTTP} from "./inventario-grpc"; //Importar la función llamar desde inventario-grpc.ts
 
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -76,71 +77,63 @@ app.get("/pedidos", (_req: Request, res: Response) =>{
     res.json(pedidos);
 });
 
-app.post("/pedidos", async (req: Request, res: Response) =>{
-    const {sku, cantidad} = req.body ?? {};
-    if (typeof sku !== "string" || typeof cantidad !== "number" || cantidad <= 0){
-        res.status(400).json({error: "Solicitud inválida, se requiere sku y cantidad"});
-        return;
-    }
-  const inicio = performance.now(); //Toma el Tiempo de inicio
 
-  try{
-    /*
-    const r = await fetch(`${INVENTARIO_URL}/stock/${encodeURIComponent(sku)}`,{ //encodeURIComponent para codificar el SKU en caso de que tenga caracteres especiales
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    */
-    const r = await fetch(`${INVENTARIO_URL}/stock/${encodeURIComponent(sku)}/reservar`, {
-        method: "POST",
-        headers: {
 
-            "Content-Type": "application/json"
-        },
-    body: JSON.stringify({ cantidad }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+app.post("/pedidos", async (req: Request, res: Response) => {
+    const { sku, cantidad } = req.body ?? {};
 
-    if(r.status === 404){
-        res.status(404).json({error: `SKU no encontrado ${sku}`});
-        return;
-    };
-
-    if (r.status === 409) {
-    const detalle = await r.json();
-    res.status(409).json(detalle);
-    return;
-}
-    /*
-    const stock = (await r.json()) as {disponible: number};
-
-    if(stock.disponible < cantidad){
-        res.status(409).json({error: `Stock insuficiente para ${sku}, disponible: ${stock.disponible}`});
-        return;
-    }
-     */
-    if (!r.ok) {
-        const detalle = await r.json();
-        res.status(r.status).json(detalle);
+    // Validar los datos recibidos
+    if (
+        typeof sku !== "string" ||
+        !Number.isInteger(cantidad) ||
+        cantidad <= 0
+    ) {
+        res.status(400).json({
+            error: "Se requiere un SKU y una cantidad entera positiva"
+        });
         return;
     }
 
-    const pedido: Pedido = {
+    const inicio = performance.now();
 
-        id: randomUUID(),
-        sku, cantidad,
-        creadoEn: new Date().toISOString()};
+    try {
+        // Reservar stock mediante gRPC
+        const reserva = await llamar<{
+            sku: string;
+            reservado: number;
+            restante: number;
+        }>("reservar", { sku, cantidad });
+
+        // Registrar el pedido si la reserva fue exitosa
+        const pedido: Pedido = {
+            id: randomUUID(),
+            sku,
+            cantidad,
+            creadoEn: new Date().toISOString()
+        };
+
         pedidos.push(pedido);
+
         res.status(201).json(pedido);
 
-  } catch (error){
-    const duracionMs =  Math.round(performance.now() - inicio);
-    const e = error as Error & {cause ?: {code?: string}};
-    const motivo = e.name === `TimeoutError` ? `Inventario no contestó en: ${TIMEOUT_MS} ms` : `No se pudo conectar a Inventario: ${e.cause?.code ?? e.message}`;
-    console.error(pedidos + " " + motivo);
-    res.status(503).json({error: "Inventario no disponible", motivo, duracionMs});
-    //res.status(500).json({error: "Error al consultar el inventario"});
-  }
+    } catch (error) {
+        const duracionMs = Math.round(
+            performance.now() - inicio
+        );
+
+        const { status, cuerpo } = aHTTP(error);
+
+        console.error(
+            "[pedidos] " + cuerpo.error + " " + cuerpo.motivo
+        );
+
+        res.status(status).json({
+            ...cuerpo,
+            duracionMs
+        });
+    }
 });
+
 
 
 //Función Leer Primos
